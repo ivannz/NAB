@@ -48,7 +48,7 @@ class NearestNeighboursDetector(EmbedderDetector, CovarianceMixin):
         """Computes the p-value of `X[-1]` with respect to the history
         in `X[:-1]`. `X` has `n_offset + n_depth + 1` observations.
         """
-        X_train = X[:self.n_depth]  # X[:-(self.n_offset + 1)]
+        X_train = X[:-(self.n_offset + 1)]
         rho = self.get_rho(X_train, X[-1])
 
         # Prepare the calibration sample
@@ -90,7 +90,7 @@ class ConformalkNNDetector(NearestNeighboursDetector):
 
     def _score_lazy(self, X):
         """Computes the lazy (offline) p-value score of `X[-1]`."""
-        X_train = X[:self.n_depth]  # X[:-(self.n_offset + 1)]
+        X_train = X[:-(self.n_offset + 1)]
         rho = self.get_rho(X_train, X[-1])
 
         # Prepare the calibration sample
@@ -108,7 +108,7 @@ class ConformalkNNDetector(NearestNeighboursDetector):
 
     def _score_full(self, X):
         """Computes the full p-value score of `X[-1]`."""
-        X_train = X[:self.n_depth]  # X[:-(self.n_offset + 1)]
+        X_train = X[:-(self.n_offset + 1)]
         rho = self.get_rho(X_train, X[-1])
 
         # Prepare the calibration sample

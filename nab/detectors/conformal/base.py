@@ -96,6 +96,26 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
         self.n_dim = n_dim
         self.default = default
 
+    def initialize(self):
+        """Check the arguments for validity."""
+        if not (isinstance(self.n_dim, int) and self.n_dim >= 1):
+            raise ValueError("""`n_dim` must specify a valid sliding window """
+                             """width in observations.""")
+
+        # Override the `n_depth` argument of the class instance.
+        if self.n_depth is None:
+            self.n_depth = int(self.probationaryPeriod)
+
+        if not (isinstance(self.n_depth, int) and self.n_depth >= 0):
+            raise ValueError("""`n_depth` must specify a non-negative size """
+                             """of the training history.""")
+
+        if isinstance(self.n_offset, float):
+            if not (0 <= self.n_offset <= 1):
+                raise ValueError("""The value of the fractional `n_offset` """
+                                 """must be within [0, 1].""")
+            self.n_offset = int(self.n_offset * self.n_depth)
+
     def handleRecord(self, inputData):
         self.history_record(inputData["value"])
 
@@ -106,14 +126,15 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
         history_ = self.history_sliding_window(history_, self.n_dim)
 
         # Ensure that the required depth of history is available
-        if self.n_depth is None:
-            if len(history_) < self.n_offset + 1:
-                return (self.default,)
-            X = history_
-        else:
+        if isinstance(self.n_depth, int):
             if len(history_) < self.n_offset + self.n_depth + 1:
                 return (self.default,)
             X = history_[-(self.n_offset + self.n_depth + 1):]
+        else:
+            # This is a legacy branch in case the full history is required
+            if len(history_) < self.n_offset + 1:
+                return (self.default,)
+            X = history_
 
         # p-value the current observation in X[-1] over the history in X[:-1]
         return (self.get_score(X),)
