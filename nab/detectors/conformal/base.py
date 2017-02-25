@@ -17,8 +17,7 @@ class HistoryMixin(object):
         The current length of the recorded history.
     """
     def history_record(self, X):
-        """Add a new observation to the history.
-        """
+        """Add a new observation to the history."""
         if not hasattr(self, "_history_size_"):
             self._history_data_ = np.empty((1024,), np.float)
             self._history_size_ = 0
@@ -32,8 +31,7 @@ class HistoryMixin(object):
         self._history_size_ += 1
 
     def history_get(self, writeable=False):
-        """Get a view into the current history.
-        """
+        """Get a view into the current history."""
         view_ = self._history_data_[:self._history_size_]
         view_.setflags(write=writeable)
         return view_
@@ -117,6 +115,8 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
             self.n_offset = int(self.n_offset * self.n_depth)
 
     def handleRecord(self, inputData):
+        """The interface function to process the next data point in the stream.
+        """
         self.history_record(inputData["value"])
 
         # Check if there is enough history for embedding
@@ -157,8 +157,7 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
 
 
 def covariance_inverse(cov, f_lambda=1e-4):
-    """Computes the inverse of the positive difinite matrix.
-    """
+    """Computes the inverse of the positive difinite matrix."""
     try:
         return np.linalg.inv(cov)
     except np.linalg.LinAlgError:
@@ -167,10 +166,9 @@ def covariance_inverse(cov, f_lambda=1e-4):
 
 
 class CovarianceMixin(object):
-    """A mixin class to compute the covariance matrix.
-    """
+    """A mixin class to compute the covariance matrix."""
     @staticmethod
-    def covariance_get(X, bias=False, update=None, inverse=False):
+    def covariance_get(X, bias=False, update=None):
         """Returns the current covariance matrix."""
         return np.cov(X, rowvar=False, bias=bias)\
                  .reshape((X.shape[1], X.shape[1]))
@@ -180,7 +178,7 @@ class IterativeCovarianceMixin(object):
     """A mixin class to compute the covariance matrix in an
     online fashion.
     """
-    def covariance_update(self, X, update=False):
+    def covariance_update(self, X, bias=None, update=False):
         """Update the current covariance matrix with the data in X."""
         mu_m, m = X.mean(axis=0, keepdims=True), X.shape[0]
         sigma_m = np.cov(X, rowvar=False, bias=True)\
