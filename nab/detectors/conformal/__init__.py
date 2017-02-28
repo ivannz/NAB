@@ -1,4 +1,6 @@
-from .detectors import ConformalkNNDetector, NearestNeighboursDetector
+from .detectors import ConformalkNNDetector, \
+    NearestNeighboursDetector, \
+    IshimtsevDetector, Ishimtsevv2Detector
 
 
 class KNNDetector(NearestNeighboursDetector):

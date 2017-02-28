@@ -95,7 +95,8 @@ class ConformalkNNDetector(NearestNeighboursDetector):
 
         # Prepare the calibration sample
         if not hasattr(self, "_calibration_"):
-            self._calibration_ = []
+            self._calibration_ = [self.get_rho(X_train, Z)
+                                  for Z in X[-(self.n_offset + 1):-1]]
         self._calibration_.append(rho)
 
         # Use the calibration sample to get the p-value

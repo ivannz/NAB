@@ -117,6 +117,11 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
     def handleRecord(self, inputData):
         """The interface function to process the next data point in the stream.
         """
+        if not hasattr(self, "n_iterations_"):
+            self.n_iterations_ = 0
+        self.n_iterations_ += 1
+
+        # Handle the new observation
         self.history_record(inputData["value"])
 
         # Check if there is enough history for embedding
