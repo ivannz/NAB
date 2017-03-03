@@ -1,12 +1,11 @@
-from nab.detectors.base import AnomalyDetector
-
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 
+from ..base import AnomalyDetector
+
 
 class HistoryMixin(object):
-    """A mixin class to record and access the history of observations
-    and create historical sliding windows.
+    """A mixin class to record and access the history of observations.
 
     Attributes
     ----------
@@ -16,6 +15,7 @@ class HistoryMixin(object):
     _history_size_ : int, private
         The current length of the recorded history.
     """
+
     def history_record(self, X):
         """Add a new observation to the history."""
         if not hasattr(self, "_history_size_"):
@@ -38,9 +38,7 @@ class HistoryMixin(object):
 
     @staticmethod
     def history_sliding_window(array, n_dim):
-        """Return a read-only view into a sliding window over the
-        first dimension.
-        """
+        """A read-only view into a sliding window over the first dimension."""
         if n_dim < 1:
             raise ValueError("""Zero-dimensional embedding is not allowed.""")
 
@@ -61,8 +59,9 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
     n_offset: int, default 0
         A non-negative offset of the train sample from the latest observation.
 
-    n_depth: None, or int (default 500)
+    n_depth: None, "auto", or int (default 500)
         The size of the sample of embedded observations to use in detecting.
+        Setting to `auto` uses the `probationaryPeriod` value instead.
         Setting to `None` means that the full history is used.
 
     default: float (default 0.5)
@@ -86,7 +85,8 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
     inputMax : float
         the largest value in the dataset.
     """
-    def __init__(self, n_dim=5, n_offset=0, n_depth=500, default=0.5,
+
+    def __init__(self, n_dim=5, n_offset=0, n_depth="auto", default=0.5,
                  *args, **kwargs):
         super(EmbedderDetector, self).__init__(*args, **kwargs)
         self.n_depth = n_depth
@@ -96,27 +96,39 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
 
     def initialize(self):
         """Check the arguments for validity."""
-        if not (isinstance(self.n_dim, int) and self.n_dim >= 1):
-            raise ValueError("""`n_dim` must specify a valid sliding window """
-                             """width in observations.""")
-
-        # Override the `n_depth` argument of the class instance.
-        if self.n_depth is None:
-            self.n_depth = int(self.probationaryPeriod)
-
-        if not (isinstance(self.n_depth, int) and self.n_depth >= 0):
-            raise ValueError("""`n_depth` must specify a non-negative size """
-                             """of the training history.""")
+        if isinstance(self.n_depth, int):
+            if self.n_depth < 0:
+                raise ValueError("""`n_depth` must specify a non-negative """
+                                 """size of the training history.""")
+            self.n_depth_ = self.n_depth
+        elif isinstance(self.n_depth, str):
+            if self.n_depth not in ("auto",):
+                raise ValueError("""Any value other than 'auto' is """
+                                 """prohibited in `n_depth`.""")
+            self.n_depth_ = int(self.probationaryPeriod)
+        elif self.n_depth is None:
+            self.n_depth_ = None
+        else:
+            raise ValueError("""`n_depth` can be either 'auto', a positive """
+                             """integer, or `None`.""")
 
         if isinstance(self.n_offset, float):
             if not (0 <= self.n_offset <= 1):
                 raise ValueError("""The value of the fractional `n_offset` """
                                  """must be within [0, 1].""")
-            self.n_offset = int(self.n_offset * self.n_depth)
+            self.n_offset_ = int(self.n_offset * self.n_depth)
+        else:
+            if not(isinstance(self.n_offset, int) and self.n_offset >= 0):
+                raise ValueError("""`n_offset` must specify a non-negative """
+                                 """horizon.""")
+            self.n_offset_ = self.n_offset
+
+        if not (isinstance(self.n_dim, int) and self.n_dim >= 1):
+            raise ValueError("""`n_dim` must specify a valid sliding window """
+                             """width in observations.""")
 
     def handleRecord(self, inputData):
-        """The interface function to process the next data point in the stream.
-        """
+        """The interface function to process the next element in the stream."""
         if not hasattr(self, "n_iterations_"):
             self.n_iterations_ = 0
         self.n_iterations_ += 1
@@ -131,13 +143,12 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
         history_ = self.history_sliding_window(history_, self.n_dim)
 
         # Ensure that the required depth of history is available
-        if isinstance(self.n_depth, int):
-            if len(history_) < self.n_offset + self.n_depth + 1:
+        if isinstance(self.n_depth_, int):
+            if len(history_) < self.n_offset_ + self.n_depth_ + 1:
                 return (self.default,)
-            X = history_[-(self.n_offset + self.n_depth + 1):]
+            X = history_[-(self.n_offset_ + self.n_depth_ + 1):]
         else:
-            # This is a legacy branch in case the full history is required
-            if len(history_) < self.n_offset + 1:
+            if len(history_) < self.n_offset_ + 1:
                 return (self.default,)
             X = history_
 
@@ -145,7 +156,9 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
         return (self.get_score(X),)
 
     def get_score(self, X):
-        """Computes the p-value of `X[-1]` with respect to the history in
+        """Compute the p-value score.
+
+        Computes the p-value of `X[-1]` with respect to the history in
         `X[:-1]`. `X` has `n_offset + n_depth + 1` observations, if `n_depth`
         is not `None`, or at least `n_offset + 1` observations otherwise.
 
@@ -153,16 +166,16 @@ class EmbedderDetector(AnomalyDetector, HistoryMixin):
         for scroing.
         """
         if self.n_depth is None:
-            X_train = X[:-(self.n_offset + 1)]
+            X_train = X[:-(self.n_offset_ + 1)]
         else:
-            X_train = X[:self.n_depth]
+            X_train = X[:self.n_depth_]
 
-        # in fact both views are exactly the same if n_depth is > 0
+        # in fact both views are exactly the same if n_depth_ is > 0
         raise NotImplementedError("""Child classes must reimplement this.""")
 
 
 def covariance_inverse(cov, f_lambda=1e-4):
-    """Computes the inverse of the positive difinite matrix."""
+    """Compute the inverse of the positive difinite matrix."""
     try:
         return np.linalg.inv(cov)
     except np.linalg.LinAlgError:
@@ -172,17 +185,17 @@ def covariance_inverse(cov, f_lambda=1e-4):
 
 class CovarianceMixin(object):
     """A mixin class to compute the covariance matrix."""
+
     @staticmethod
     def covariance_get(X, bias=False, update=None):
-        """Returns the current covariance matrix."""
+        """Return the current covariance matrix."""
         return np.cov(X, rowvar=False, bias=bias)\
                  .reshape((X.shape[1], X.shape[1]))
 
 
 class IterativeCovarianceMixin(object):
-    """A mixin class to compute the covariance matrix in an
-    online fashion.
-    """
+    """A mixin for online covariance computation."""
+
     def covariance_update(self, X, bias=None, update=False):
         """Update the current covariance matrix with the data in X."""
         mu_m, m = X.mean(axis=0, keepdims=True), X.shape[0]
@@ -205,7 +218,7 @@ class IterativeCovarianceMixin(object):
             self._covariance_n_samples_ = m
 
     def covariance_get(self, X=None, bias=False, update=False):
-        """Returns the current covariance matrix."""
+        """Return the current covariance matrix."""
         if X is not None:
             self.covariance_update(X, update=update)
 
